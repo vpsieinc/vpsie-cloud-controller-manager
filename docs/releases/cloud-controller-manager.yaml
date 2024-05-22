@@ -150,7 +150,7 @@ spec:
           effect: "NoSchedule"
       hostNetwork: true
       containers:
-        - image: natnaeldocker/vpsie-cloud-controller-manager:v0.2.0
+        - image: natnaeldocker/vpsie-cloud-controller-manager:v0.3.0
           imagePullPolicy: Always
           name: vpsie-cloud-controller-manager
           command:
