@@ -70,6 +70,19 @@ func (l *loadbalancers) EnsureLoadBalancer(ctx context.Context, clusterName stri
 			return nil, err
 		}
 	} else if err == errLBNotFound {
+		// check lb in pending state
+		pending, err := l.CheckIfPending(ctx, lbName)
+		if err != nil {
+			return nil, err
+		}
+
+		if pending {
+			return nil, api.NewRetryError("loadbalancer is in the process of creation, wait for 30 seconds", 30*time.Second)
+		}
+
+		klog.Infof("Creating loadbalancer %s", lbName)
+		klog.Infof("lbRequest: %v", lbRequest)
+
 		err = l.client.LB.CreateLB(ctx, lbRequest)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create load-balancer: %s", err)
@@ -81,7 +94,7 @@ func (l *loadbalancers) EnsureLoadBalancer(ctx context.Context, clusterName stri
 	lbDetail, err := l.getLoadBalancerByName(ctx, lbName)
 	if err != nil {
 		if err == errLBNotFound {
-			return nil, api.NewRetryError("loadbalancer is in the process of creation", 65*time.Second)
+			return nil, api.NewRetryError("loadbalancer is in the process of creation, wait for 65 seconds", 65*time.Second)
 		}
 
 		return nil, err
@@ -307,6 +320,22 @@ func (l *loadbalancers) buildLoadBalancerRequest(ctx context.Context, service *v
 		return nil, err
 	}
 
+	healthCheckPath := getHealthCheckPath(service)
+	checkInterval := getHealthCheckInterval(service)
+	fastInterval := getResponseTimeout(service)
+	rise := getHealthCheckInterval(service)
+	fail := getUnhealthyThreshold(service)
+
+	var vpcID *string
+	if privateLoadBalancer(service) {
+		vpcID, err = getVpcID(service)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	print(vpcID)
+
 	rules, err := l.buildForwardingRules(service, nodes)
 	if err != nil {
 		return nil, err
@@ -314,13 +343,18 @@ func (l *loadbalancers) buildLoadBalancerRequest(ctx context.Context, service *v
 
 	return &govpsie.CreateLBReq{
 		CookieName:         cookieName,
-		CookieCheck:        false,
+		CookieCheck:        cookieCheck,
 		RedirectHTTP:       redirect,
 		ResourceIdentifier: getResourceIdentifier,
 		DcIdentifier:       l.datacenter,
 		Rule:               rules,
 		LBName:             getLoadBalancerName(service),
 		Algorithm:          getAlgorithm(service),
+		HealthCheckPath:    healthCheckPath,
+		CheckInterval:      checkInterval,
+		FastInterval:       fastInterval,
+		Rise:               rise,
+		Fall:               fail,
 	}, nil
 }
 
@@ -422,6 +456,8 @@ func (l *loadbalancers) buildForwardingRules(service *v1.Service, nodes []*v1.No
 		http2PortMap[int32(port)] = true
 	}
 
+	domainID := getDomainID(service)
+
 	var rules []govpsie.Rule
 	for _, port := range service.Spec.Ports {
 		protocol := defaultProtocol
@@ -435,7 +471,7 @@ func (l *loadbalancers) buildForwardingRules(service *v1.Service, nodes []*v1.No
 			protocol = protocolHTTP2
 		}
 
-		rule, err := buildForwardingRule(service, &port, protocol, backends)
+		rule, err := buildForwardingRule(service, &port, protocol, domainID, backends)
 		if err != nil {
 			return nil, err
 		}
@@ -445,7 +481,7 @@ func (l *loadbalancers) buildForwardingRules(service *v1.Service, nodes []*v1.No
 	return rules, nil
 }
 
-func buildForwardingRule(service *v1.Service, port *v1.ServicePort, protocol string, backends []govpsie.Backend) (*govpsie.Rule, error) {
+func buildForwardingRule(service *v1.Service, port *v1.ServicePort, protocol string, domainID string, backends []govpsie.Backend) (*govpsie.Rule, error) {
 	var rule govpsie.Rule
 
 	if port.Protocol == "udp" {
@@ -453,18 +489,43 @@ func buildForwardingRule(service *v1.Service, port *v1.ServicePort, protocol str
 	}
 
 	rule.Scheme = protocol
-
 	rule.FrontPort = fmt.Sprint(port.Port)
-	rule.BackPort = fmt.Sprint(port.NodePort)
+
 	if backends == nil {
 		rule.Backends = []govpsie.Backend{}
 		klog.Infof("backends nil: %v", rule.Backends)
-	} else {
+	}
 
+	if protocol == protocolHTTP || protocol == protocolHTTPS || protocol == protocolHTTP2 {
+		buildDomainForwardingRule(&rule, service, domainID, port.NodePort, backends)
+	} else {
+		rule.BackPort = fmt.Sprint(port.NodePort)
 		rule.Backends = backends
 	}
 
 	return &rule, nil
+}
+
+func buildDomainForwardingRule(rule *govpsie.Rule, service *v1.Service, domainID string, backPort int32, backends []govpsie.Backend) error {
+	if domainID == "" {
+		return fmt.Errorf("domain id not specified")
+	}
+
+	subDomain := subdomain(service)
+
+	rule.Domains = []govpsie.LBDomain{
+		{
+			DomainID:      domainID,
+			Backends:      backends,
+			BackPort:      fmt.Sprint(backPort),
+			BackendScheme: protocolHTTP,
+			DomainName:    subDomain,
+		},
+	}
+
+	klog.Infof("rule-------domains: %v", rule.Domains)
+
+	return nil
 }
 
 func serverIDFromProviderID(providerID string) (string, error) {
@@ -594,4 +655,108 @@ func (l *loadbalancers) buildBackendList(ctx context.Context, serverIdentifiers 
 	}
 
 	return backends, nil
+}
+
+func (l *loadbalancers) CheckIfPending(ctx context.Context, lbName string) (bool, error) {
+	pendingLbs, err := l.client.LB.ListPendingLBs(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	for _, lb := range pendingLbs {
+		if lb.Data.LbName == lbName {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func getDomainID(service *v1.Service) string {
+	return service.Annotations[domainIDAnnotation]
+}
+
+func getHealthCheckPath(service *v1.Service) string {
+	path, ok := service.Annotations[healthCheckPathAnnotation]
+	if !ok {
+		return "/"
+	}
+
+	return path
+}
+
+func getHealthCheckInterval(service *v1.Service) int {
+	interval, ok := service.Annotations[healthCheckIntervalAnnotation]
+	if !ok {
+		return 1000
+	}
+
+	intervalInt, err := strconv.Atoi(interval)
+	if err != nil {
+		return 1000
+	}
+
+	return intervalInt
+}
+
+func getResponseTimeout(service *v1.Service) int {
+	responseTimeout, ok := service.Annotations[responseTimeoutAnnotation]
+	if !ok {
+		return 500
+	}
+
+	responseTimeoutInt, err := strconv.Atoi(responseTimeout)
+	if err != nil {
+		return 500
+	}
+
+	return responseTimeoutInt
+}
+
+func getHealthyThreshold(service *v1.Service) int {
+	healthyThreshold, ok := service.Annotations[healthyThresholdAnnotation]
+	if !ok {
+		return 5
+	}
+
+	healthyThresholdInt, err := strconv.Atoi(healthyThreshold)
+	if err != nil {
+		return 5
+	}
+
+	return healthyThresholdInt
+}
+
+func getUnhealthyThreshold(service *v1.Service) int {
+	unhealthyThreshold, ok := service.Annotations[unhealthyThresholdAnnotation]
+	if !ok {
+		return 2
+	}
+
+	unhealthyThresholdInt, err := strconv.Atoi(unhealthyThreshold)
+	if err != nil {
+		return 2
+	}
+
+	return unhealthyThresholdInt
+}
+
+func subdomain(service *v1.Service) string {
+	return service.Annotations[subDomainAnnotation]
+}
+
+func privateLoadBalancer(service *v1.Service) bool {
+	status, ok := service.Annotations[privateLoadBalancerAnnotation]
+
+	return ok && status == "true"
+}
+
+func getVpcID(service *v1.Service) (*string, error) {
+	id, ok := service.Annotations[vpcIDAnnotation]
+
+	if !ok {
+		return nil, fmt.Errorf("vpc id not specified, but required")
+	}
+
+	return &id, nil
 }
