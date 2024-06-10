@@ -5,7 +5,7 @@ metadata:
   name: http-lb
   annotations:
     service.beta.kubernetes.io/vpsie-lb-protocol: "http2"
-    service.beta.kubernetes.io/vpsie-https-ports: "443"
+    service.beta.kubernetes.io/vpsie-http2-ports: "443"
     service.beta.kubernetes.io/vpsie-resource-identifier: "8152952c-87ca-11eb-9353-0242ac110004"
     service.beta.kubernetes.io/vpsie-domain-id: "1edfc9b5-bda6-11ed-b45e-0050569c68dc"
     service.beta.kubernetes.io/vpsie-subdomain: "example"
@@ -16,7 +16,7 @@ spec:
   selector:
     app: nginx-example
   ports:
-    - name: https
+    - name: http2
       protocol: TCP
       port: 443
       targetPort: 80

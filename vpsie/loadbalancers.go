@@ -70,6 +70,19 @@ func (l *loadbalancers) EnsureLoadBalancer(ctx context.Context, clusterName stri
 			return nil, err
 		}
 	} else if err == errLBNotFound {
+		// check lb in pending state
+		pending, err := l.CheckIfPending(ctx, lbName)
+		if err != nil {
+			return nil, err
+		}
+
+		if pending {
+			return nil, api.NewRetryError("loadbalancer is in the process of creation, wait for 30 seconds", 30*time.Second)
+		}
+
+		klog.Infof("Creating loadbalancer %s", lbName)
+		klog.Infof("lbRequest: %v", lbRequest)
+
 		err = l.client.LB.CreateLB(ctx, lbRequest)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create load-balancer: %s", err)
@@ -81,7 +94,7 @@ func (l *loadbalancers) EnsureLoadBalancer(ctx context.Context, clusterName stri
 	lbDetail, err := l.getLoadBalancerByName(ctx, lbName)
 	if err != nil {
 		if err == errLBNotFound {
-			return nil, api.NewRetryError("loadbalancer is in the process of creation", 65*time.Second)
+			return nil, api.NewRetryError("loadbalancer is in the process of creation, wait for 65 seconds", 65*time.Second)
 		}
 
 		return nil, err
@@ -510,6 +523,8 @@ func buildDomainForwardingRule(rule *govpsie.Rule, service *v1.Service, domainID
 		},
 	}
 
+	klog.Infof("rule-------domains: %v", rule.Domains)
+
 	return nil
 }
 
@@ -640,6 +655,21 @@ func (l *loadbalancers) buildBackendList(ctx context.Context, serverIdentifiers 
 	}
 
 	return backends, nil
+}
+
+func (l *loadbalancers) CheckIfPending(ctx context.Context, lbName string) (bool, error) {
+	pendingLbs, err := l.client.LB.ListPendingLBs(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	for _, lb := range pendingLbs {
+		if lb.Data.LbName == lbName {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func getDomainID(service *v1.Service) string {
