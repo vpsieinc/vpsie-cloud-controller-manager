@@ -18,14 +18,12 @@ import (
 var errLBNotFound error = errors.New("loadbalancer not found")
 
 type loadbalancers struct {
-	client     *govpsie.Client
-	datacenter string
+	client *govpsie.Client
 }
 
-func newLoadbalancers(client *govpsie.Client, datacenter string) cloudprovider.LoadBalancer {
+func newLoadbalancers(client *govpsie.Client) cloudprovider.LoadBalancer {
 	return &loadbalancers{
-		client:     client,
-		datacenter: datacenter,
+		client: client,
 	}
 }
 
@@ -326,27 +324,22 @@ func (l *loadbalancers) buildLoadBalancerRequest(ctx context.Context, service *v
 	rise := getHealthCheckInterval(service)
 	fail := getUnhealthyThreshold(service)
 
-	var vpcID *string
-	if privateLoadBalancer(service) {
-		vpcID, err = getVpcID(service)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	print(vpcID)
-
 	rules, err := l.buildForwardingRules(service, nodes)
 	if err != nil {
 		return nil, err
 	}
 
-	return &govpsie.CreateLBReq{
+	dcIdentifier, err := l.getDataCenterIdentifier(nodes)
+	if err != nil {
+		return nil, err
+	}
+
+	req := govpsie.CreateLBReq{
 		CookieName:         cookieName,
 		CookieCheck:        cookieCheck,
 		RedirectHTTP:       redirect,
 		ResourceIdentifier: getResourceIdentifier,
-		DcIdentifier:       l.datacenter,
+		DcIdentifier:       dcIdentifier,
 		Rule:               rules,
 		LBName:             getLoadBalancerName(service),
 		Algorithm:          getAlgorithm(service),
@@ -355,7 +348,18 @@ func (l *loadbalancers) buildLoadBalancerRequest(ctx context.Context, service *v
 		FastInterval:       fastInterval,
 		Rise:               rise,
 		Fall:               fail,
-	}, nil
+	}
+
+	if privateLoadBalancer(service) {
+		vpcID, err := getVpcID(service)
+		if err != nil {
+			return nil, err
+		}
+
+		req.VpcID = vpcID
+	}
+
+	return &req, nil
 }
 
 // getAlgorithm returns the algorithm to be used for load balancer service
@@ -399,12 +403,21 @@ func getCookieCheck(service *v1.Service) (bool, error) {
 
 // getResourceIdentifier returns resource identifier
 func getResourceIdentifier(service *v1.Service) (string, error) {
-	identifier, ok := service.Annotations[resourceIdentifierAnnotation]
-	if !ok || identifier == "" {
-		return "", fmt.Errorf("resource identifier  not specified, but required")
+	planName, ok := service.Annotations[loadbalancerPlanAnnotation]
+	if !ok || planName == "" {
+		planName = basicPlan
 	}
 
-	return identifier, nil
+	switch planName {
+	case basicPlan:
+		return basicPlanIdentifier, nil
+	case standardPlan:
+		return standardPlanIdentifier, nil
+	case professionalPlan:
+		return professionalPlanIdentifier, nil
+	default:
+		return "", fmt.Errorf("unknown plan name: %v. Please choose on of the following: %v, %v, %v", planName, basicPlan, standardPlan, professionalPlan)
+	}
 }
 
 func (l *loadbalancers) buildForwardingRules(service *v1.Service, nodes []*v1.Node) ([]govpsie.Rule, error) {
@@ -583,9 +596,30 @@ func buildBackends(nodes []*v1.Node) ([]govpsie.Backend, error) {
 	return list, nil
 }
 
+func (l *loadbalancers) getDataCenterIdentifier(nodes []*v1.Node) (string, error) {
+	if len(nodes) < 1 {
+		return "", fmt.Errorf("invalid numbers of nodes %v", nodes)
+	}
+
+	vmIdentifier := nodes[0].Spec.ProviderID
+	vms, err := l.client.Storage.ListVmsToAttach(context.Background())
+	if err != nil {
+		klog.Infof("can't list vms to attach: err = %v", err)
+		return "", err
+	}
+
+	for _, vm := range vms {
+		if vm.Identifier == vmIdentifier {
+			return vm.DcIdentifier, nil
+		}
+	}
+
+	return "", fmt.Errorf("can't get vm from vmIdentifier: %v", vmIdentifier)
+}
+
 func getLBProtocol(service *v1.Service) (string, error) {
 	protocol, ok := service.Annotations[lBProtocolAnnotation]
-	if !ok {
+	if !ok || protocol == "" {
 		return protocolTCP, nil
 	}
 
@@ -751,12 +785,17 @@ func privateLoadBalancer(service *v1.Service) bool {
 	return ok && status == "true"
 }
 
-func getVpcID(service *v1.Service) (*string, error) {
+func getVpcID(service *v1.Service) (int, error) {
 	id, ok := service.Annotations[vpcIDAnnotation]
 
 	if !ok {
-		return nil, fmt.Errorf("vpc id not specified, but required")
+		return 0, fmt.Errorf("vpc id not specified, but required")
 	}
 
-	return &id, nil
+	idInt, err := strconv.Atoi(id)
+	if err != nil {
+		return 0, err
+	}
+
+	return idInt, nil
 }

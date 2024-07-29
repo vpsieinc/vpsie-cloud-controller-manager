@@ -297,6 +297,8 @@ github.com/vpsie/govpsie v0.0.0-20240506185121-08d4c5c3cb95 h1:hQUeI8SX7gUNym1My
 github.com/vpsie/govpsie v0.0.0-20240506185121-08d4c5c3cb95/go.mod h1:wMreoLu8i6ILhYzQtVQ8qX7+p278r06YKbMpIvtS/oE=
 github.com/vpsie/govpsie v0.0.0-20240518210904-4cc4af8ca0c2 h1:Hz43xVLRdJRQExkM29tZY9xjp0YtbII5at6/Ov7CrJQ=
 github.com/vpsie/govpsie v0.0.0-20240518210904-4cc4af8ca0c2/go.mod h1:wMreoLu8i6ILhYzQtVQ8qX7+p278r06YKbMpIvtS/oE=
+github.com/vpsie/govpsie v0.0.0-20240729162034-c58575f007c6 h1:ysmzusyE7Pv3n8o3sEgcVrOyhPiQZPiNEwy/MvzrLc0=
+github.com/vpsie/govpsie v0.0.0-20240729162034-c58575f007c6/go.mod h1:wMreoLu8i6ILhYzQtVQ8qX7+p278r06YKbMpIvtS/oE=
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 h1:eY9dn8+vbi4tKz5Qo6v2eYzo7kUS51QINcR5jNpbZS8=
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q53MR2AWcXfiuqkDkRtnGDLqkBTpCHuJHxtU=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=

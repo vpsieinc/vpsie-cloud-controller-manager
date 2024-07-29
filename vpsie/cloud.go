@@ -18,6 +18,12 @@ const (
 	accessTokenEnv                = "VPSIE_API_KEY" //nolint
 	dcIdentifier                  = "DCIDENNTIFIER"
 	apiURL                        = "API_URL"
+	basicPlan                     = "basic"
+	standardPlan                  = "standard"
+	professionalPlan              = "professional"
+	basicPlanIdentifier           = "8152952c-87ca-11eb-9353-0242ac110004"
+	standardPlanIdentifier        = "85762729-87ca-11eb-9353-0242ac110004"
+	professionalPlanIdentifier    = "86602edf-87ca-11eb-9353-0242ac110004"
 	userAgent                     = "vpsie-cloud-controller-manager/1.0.0"
 	loadbalancerNameAnnotation    = "service.beta.kubernetes.io/vpsie-loadbalancer-name"
 	subDomainAnnotation           = "service.beta.kubernetes.io/vpsie-subdomain"
@@ -25,6 +31,7 @@ const (
 	cookieNameAnnotation          = "service.beta.kubernetes.io/vpsie-cookie-name"
 	cookieCheckAnnotation         = "service.beta.kubernetes.io/vpsie-cookie-check"
 	resourceIdentifierAnnotation  = "service.beta.kubernetes.io/vpsie-resource-identifier"
+	loadbalancerPlanAnnotation    = "service.beta.kubernetes.io/vpsie-loadbalancer-plan"
 	redirectHttpAnnotation        = "service.beta.kubernetes.io/vpsie-redirecthttp"
 	lBProtocolAnnotation          = "service.beta.kubernetes.io/vpsie-lb-protocol"
 	protocolTCP                   = "tcp"
@@ -103,11 +110,6 @@ func newCloud() (cloudprovider.Interface, error) {
 		return nil, fmt.Errorf("environment variable %q is requried", accessTokenEnv)
 	}
 
-	datacenter := os.Getenv(dcIdentifier)
-	if dcIdentifier == "" {
-		return nil, fmt.Errorf("environment variable %q is required", dcIdentifier)
-	}
-
 	klog.Info("Creating Vpsie client")
 
 	client := govpsie.NewClient(oauth2.NewClient(context.Background(), nil))
@@ -119,7 +121,7 @@ func newCloud() (cloudprovider.Interface, error) {
 
 	return &cloud{
 		client:        client,
-		loadbalancers: newLoadbalancers(client, datacenter),
+		loadbalancers: newLoadbalancers(client),
 	}, nil
 }
 

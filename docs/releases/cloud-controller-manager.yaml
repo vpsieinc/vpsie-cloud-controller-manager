@@ -162,10 +162,5 @@ spec:
             - name: VPSIE_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: vpsie
-                  key: api-key
-            - name: DCIDENNTIFIER
-              valueFrom:
-                secretKeyRef:
-                  name: vpsie
-                  key: datacenter
+                  name: vpsie-secret
+                  key: token

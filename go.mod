@@ -5,7 +5,7 @@ go 1.21.4
 toolchain go1.22.2
 
 require (
-	github.com/vpsie/govpsie v0.0.0-20240518210904-4cc4af8ca0c2
+	github.com/vpsie/govpsie v0.0.0-20240729162034-c58575f007c6
 	k8s.io/apimachinery v0.28.3
 	k8s.io/cloud-provider v0.28.3
 	k8s.io/component-base v0.28.3
