@@ -351,7 +351,7 @@ func (l *loadbalancers) buildLoadBalancerRequest(ctx context.Context, service *v
 	}
 
 	if privateLoadBalancer(service) {
-		vpcID, err := getVpcID(service)
+		vpcID, err := l.getVpcID(service)
 		if err != nil {
 			return nil, err
 		}
@@ -785,17 +785,23 @@ func privateLoadBalancer(service *v1.Service) bool {
 	return ok && status == "true"
 }
 
-func getVpcID(service *v1.Service) (int, error) {
-	id, ok := service.Annotations[vpcIDAnnotation]
+func (l *loadbalancers) getVpcID(service *v1.Service) (int, error) {
+	name, ok := service.Annotations[vpcNameAnnotation]
 
 	if !ok {
-		return 0, fmt.Errorf("vpc id not specified, but required")
+		return 0, fmt.Errorf("vpc name not specified, but required")
 	}
 
-	idInt, err := strconv.Atoi(id)
+	vpcs, err := l.client.VPC.List(context.Background(), nil)
 	if err != nil {
 		return 0, err
 	}
 
-	return idInt, nil
+	for _, vpc := range vpcs {
+		if vpc.Name == name {
+			return vpc.ID, nil
+		}
+	}
+
+	return 0, fmt.Errorf("vpc with name %s not found", name)
 }

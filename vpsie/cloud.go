@@ -48,7 +48,7 @@ const (
 	healthyThresholdAnnotation    = "service.beta.kubernetes.io/vpsie-healthy-threshold"
 	unhealthyThresholdAnnotation  = "service.beta.kubernetes.io/vpsie-unhealthy-threshold"
 	privateLoadBalancerAnnotation = "service.beta.kubernetes.io/vpsie-private-loadbalancer"
-	vpcIDAnnotation               = "service.beta.kubernetes.io/vpsie-vpc-id"
+	vpcNameAnnotation             = "service.beta.kubernetes.io/vpsie-vpc-name"
 )
 
 type cloud struct {
