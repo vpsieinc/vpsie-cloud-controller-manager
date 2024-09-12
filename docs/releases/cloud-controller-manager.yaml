@@ -162,10 +162,9 @@ spec:
             - name: VPSIE_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: vpsie
-                  key: api-key
-            - name: DCIDENNTIFIER
+                  name: vpsie-secret
+                  key: token
+            - name: HOSTNAME
               valueFrom:
-                secretKeyRef:
-                  name: vpsie
-                  key: datacenter
+                fieldRef:
+                  fieldPath: spec.nodeName
