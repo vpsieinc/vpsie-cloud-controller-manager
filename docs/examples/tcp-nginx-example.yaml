@@ -6,8 +6,8 @@ metadata:
   annotations:
     service.beta.kubernetes.io/vpsie-lb-protocol: "tcp" # tcp is the default value
     service.beta.kubernetes.io/vpsie-loadbalancer-plan: "basic"  # basic, standard, professional (basic is the default value)
-    service.beta.kubernetes.io/vpsie-private-loadbalancer: true
-    service.beta.kubernetes.io/vpsie-vpc-id: 1233 # vpc id
+    service.beta.kubernetes.io/vpsie-private-loadbalancer: "false"
+    service.beta.kubernetes.io/vpsie-vpc-name: "create" # vpc name
 
 spec:
   type: LoadBalancer

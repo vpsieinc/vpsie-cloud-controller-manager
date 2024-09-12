@@ -164,3 +164,7 @@ spec:
                 secretKeyRef:
                   name: vpsie-secret
                   key: token
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
