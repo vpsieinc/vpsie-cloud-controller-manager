@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -329,7 +330,7 @@ func (l *loadbalancers) buildLoadBalancerRequest(ctx context.Context, service *v
 		return nil, err
 	}
 
-	dcIdentifier, err := l.getDataCenterIdentifier(nodes)
+	dcIdentifier, err := l.getDataCenterIdentifier()
 	if err != nil {
 		return nil, err
 	}
@@ -596,25 +597,36 @@ func buildBackends(nodes []*v1.Node) ([]govpsie.Backend, error) {
 	return list, nil
 }
 
-func (l *loadbalancers) getDataCenterIdentifier(nodes []*v1.Node) (string, error) {
-	if len(nodes) < 1 {
-		return "", fmt.Errorf("invalid numbers of nodes %v", nodes)
-	}
+func (l *loadbalancers) getDataCenterIdentifier() (string, error) {
+	hostName := os.Getenv("HOSTNAME")
 
-	vmIdentifier := nodes[0].Spec.ProviderID
+	// list all vpsies and search for specific one by name hostName
 	vms, err := l.client.Storage.ListVmsToAttach(context.Background())
+
+	klog.Info("List vms to attach")
 	if err != nil {
-		klog.Infof("can't list vms to attach: err = %v", err)
+		klog.Error("Failed to list vms to attach: %v", err)
 		return "", err
 	}
 
+	klog.Info("Listed vms to attach %v", vms)
+
+	var curentVm *govpsie.VmToAttach
 	for _, vm := range vms {
-		if vm.Identifier == vmIdentifier {
-			return vm.DcIdentifier, nil
+		if strings.ToLower(vm.Hostname) == hostName {
+			curentVm = &vm
+			break
 		}
 	}
 
-	return "", fmt.Errorf("can't get vm from vmIdentifier: %v", vmIdentifier)
+	klog.Info("Curent vm: ", curentVm)
+
+	if curentVm == nil || curentVm.Hostname == "" {
+		return "", fmt.Errorf("vpsie with name %s not found", hostName)
+	}
+
+	return curentVm.DcIdentifier, nil
+
 }
 
 func getLBProtocol(service *v1.Service) (string, error) {
