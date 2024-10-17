@@ -351,9 +351,11 @@ func (l *loadbalancers) buildLoadBalancerRequest(ctx context.Context, service *v
 		Fall:               fail,
 	}
 
+	klog.Info("checking private load balancer")
 	if privateLoadBalancer(service) {
 		vpcID, err := l.getVpcID(service)
 		if err != nil {
+			klog.Error("Failed to get vpc id: %v", err)
 			return nil, err
 		}
 
@@ -798,6 +800,7 @@ func privateLoadBalancer(service *v1.Service) bool {
 }
 
 func (l *loadbalancers) getVpcID(service *v1.Service) (int, error) {
+	klog.Infof("getting vpc id for service")
 	name, ok := service.Annotations[vpcNameAnnotation]
 
 	if !ok {
@@ -806,14 +809,20 @@ func (l *loadbalancers) getVpcID(service *v1.Service) (int, error) {
 
 	vpcs, err := l.client.VPC.List(context.Background(), nil)
 	if err != nil {
+		klog.Error("Failed to list vpcs: %v", err)
 		return 0, err
 	}
 
+	klog.Infof("vpcs: %+v\n", vpcs)
+
 	for _, vpc := range vpcs {
 		if vpc.Name == name {
+			klog.Infof("vpc with name %s found", name)
 			return vpc.ID, nil
 		}
 	}
+
+	klog.Infof("vpc with name %s not found", name)
 
 	return 0, fmt.Errorf("vpc with name %s not found", name)
 }
