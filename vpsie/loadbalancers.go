@@ -335,7 +335,7 @@ func (l *loadbalancers) buildLoadBalancerRequest(ctx context.Context, service *v
 		return nil, err
 	}
 
-	privatelb, err := l.privateLoadBalancer(service)
+	privatelb := l.privateLoadBalancer(service)
 
 	req := govpsie.CreateLBReq{
 		CookieName:         cookieName,
@@ -355,19 +355,15 @@ func (l *loadbalancers) buildLoadBalancerRequest(ctx context.Context, service *v
 	}
 
 	klog.Info("checking private load balancer")
-	if privateLoadBalancer(service) {
-		vpcID, err := l.getVpcID(service)
-		if err != nil {
-			klog.Error("Failed to get vpc id: %v", err)
-			return nil, err
-		}
 
-		req.VpcID = vpcID
+	vpcID, err := l.getVpcID(service)
 
-	} else {
-		vpcID := l.getVpcID(service)
-		req.VpcID = vpcID
+	if err != nil && l.privateLoadBalancer(service) {
+		klog.Error("Failed to get vpc id: %v", err)
+		return nil, err
 	}
+
+	req.VpcID = vpcID
 
 	return &req, nil
 }
@@ -800,7 +796,7 @@ func subdomain(service *v1.Service) string {
 	return service.Annotations[subDomainAnnotation]
 }
 
-func privateLoadBalancer(service *v1.Service) bool {
+func (l *loadbalancers) privateLoadBalancer(service *v1.Service) bool {
 	status, ok := service.Annotations[privateLoadBalancerAnnotation]
 
 	return ok && status == "true"
@@ -811,7 +807,8 @@ func (l *loadbalancers) getVpcID(service *v1.Service) (int, error) {
 	name, ok := service.Annotations[vpcNameAnnotation]
 
 	if !ok {
-		return 0, klog.Error("vpc name not specified")
+		klog.Error("vpc name not specified")
+		return 0, nil
 	}
 
 	vpcs, err := l.client.VPC.List(context.Background(), nil)
